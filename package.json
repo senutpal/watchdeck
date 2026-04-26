@@ -1,0 +1,19 @@
+{
+  "name": "watchdeck",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsup --entry.content src/entrypoints/content.ts --entry.background src/entrypoints/background.ts --format iife --target es2020 --out-dir dist --clean=false && node scripts/copy-static.mjs",
+    "test": "vitest",
+    "smoke": "node scripts/smoke-extension.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.40",
+    "@types/node": "^25.6.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}
