@@ -120,4 +120,61 @@ describe("local resume storage repository", () => {
 
     expect(logger.warn).toHaveBeenCalledTimes(2);
   });
+
+  it("prunes older records beyond maxRecords while keeping non-resume keys", async () => {
+    const { values } = installChromeStorage({ unrelated: { keep: true } });
+    const repository = createLocalStorageRepository();
+
+    await repository.saveResumeRecord({ videoId: "oldest1", timestampSeconds: 10, durationSeconds: 100, updatedAtMs: 1000 });
+    await repository.saveResumeRecord({ videoId: "newest2", timestampSeconds: 20, durationSeconds: 100, updatedAtMs: 3000 });
+    await repository.saveResumeRecord({ videoId: "middle3", timestampSeconds: 30, durationSeconds: 100, updatedAtMs: 2000 });
+
+    await expect(repository.pruneResumeRecords({ maxRecords: 2 })).resolves.toEqual({ pruned: 1, remaining: 2 });
+
+    expect(values["watchdeck:resume:v1:oldest1"]).toBeUndefined();
+    expect(values["watchdeck:resume:v1:newest2"]).toBeDefined();
+    expect(values["watchdeck:resume:v1:middle3"]).toBeDefined();
+    expect(values.unrelated).toEqual({ keep: true });
+  });
+
+  it("prunes records older than maxAgeMs", async () => {
+    const { values } = installChromeStorage();
+    const repository = createLocalStorageRepository({ now: () => 5000 });
+
+    await repository.saveResumeRecord({ videoId: "stale1", timestampSeconds: 10, durationSeconds: 100, updatedAtMs: 3999 });
+    await repository.saveResumeRecord({ videoId: "fresh2", timestampSeconds: 20, durationSeconds: 100, updatedAtMs: 4000 });
+
+    await expect(repository.pruneResumeRecords({ maxAgeMs: 1000 })).resolves.toEqual({ pruned: 1, remaining: 1 });
+
+    expect(values["watchdeck:resume:v1:stale1"]).toBeUndefined();
+    expect(values["watchdeck:resume:v1:fresh2"]).toBeDefined();
+  });
+
+  it("removes malformed resume-prefixed values and counts them as pruned", async () => {
+    const { values } = installChromeStorage({
+      "watchdeck:resume:v1:badbad": { schemaVersion: 2, videoId: "badbad" }
+    });
+    const repository = createLocalStorageRepository();
+
+    await repository.saveResumeRecord({ videoId: "valid1", timestampSeconds: 20, durationSeconds: 100, updatedAtMs: 1000 });
+
+    await expect(repository.pruneResumeRecords()).resolves.toEqual({ pruned: 1, remaining: 1 });
+
+    expect(values["watchdeck:resume:v1:badbad"]).toBeUndefined();
+    expect(values["watchdeck:resume:v1:valid1"]).toBeDefined();
+  });
+
+  it("warns and returns a safe pruning result when remove fails", async () => {
+    installChromeStorage();
+    const logger = { warn: vi.fn() };
+    const repository = createLocalStorageRepository({ logger });
+
+    await repository.saveResumeRecord({ videoId: "oldest1", timestampSeconds: 10, durationSeconds: 100, updatedAtMs: 1000 });
+    await repository.saveResumeRecord({ videoId: "newest2", timestampSeconds: 20, durationSeconds: 100, updatedAtMs: 3000 });
+    vi.spyOn(chrome.storage.local, "remove").mockRejectedValueOnce(new Error("remove failed"));
+
+    await expect(repository.pruneResumeRecords({ maxRecords: 1 })).resolves.toEqual({ pruned: 0, remaining: 2 });
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
 });
