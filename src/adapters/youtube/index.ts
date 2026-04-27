@@ -75,6 +75,7 @@ export function createYoutubeAdapter(options: YoutubeAdapterOptions = {}): Youtu
       let currentPlayerHandle: YoutubePlayerLifecycleHandle | undefined;
       let cleanupNavigation: (() => void) | undefined;
       let cleanedUp = false;
+      let routeVersion = 0;
 
       const cleanupPlayer = () => {
         currentPlayerHandle?.cleanup();
@@ -83,18 +84,22 @@ export function createYoutubeAdapter(options: YoutubeAdapterOptions = {}): Youtu
 
       cleanupNavigation = navigationObserver.start((context) => {
         cleanupPlayer();
+        status = "idle";
+        routeVersion += 1;
+        const version = routeVersion;
 
         if (!context.supported) {
           return;
         }
 
-        currentPlayerHandle = waitForReadyPlayer(context, {
+        const playerHandle = waitForReadyPlayer(context, {
           ...options.playerLifecycleOptions,
           diagnostics: options.diagnostics
         });
+        currentPlayerHandle = playerHandle;
 
-        currentPlayerHandle.promise.then((state) => {
-          if (cleanedUp || !state) {
+        playerHandle.promise.then((state) => {
+          if (cleanedUp || version !== routeVersion || currentPlayerHandle !== playerHandle || !state) {
             return;
           }
 
@@ -109,6 +114,8 @@ export function createYoutubeAdapter(options: YoutubeAdapterOptions = {}): Youtu
         }
 
         cleanedUp = true;
+        status = "idle";
+        routeVersion += 1;
         cleanupNavigation?.();
         cleanupPlayer();
       };

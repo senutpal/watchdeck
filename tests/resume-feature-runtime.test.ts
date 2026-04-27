@@ -14,6 +14,21 @@ const supportedContext: SupportedYoutubeWatchContext = {
   url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 };
 
+const nextSupportedContext: SupportedYoutubeWatchContext = {
+  supported: true,
+  videoId: "J---aiyznGQ",
+  url: "https://www.youtube.com/watch?v=J---aiyznGQ"
+};
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+
+  return { promise, resolve };
+}
+
 describe("resume feature runtime", () => {
   it("starts navigation observation and waits for ready players only for supported contexts", async () => {
     const navigationCleanup = vi.fn();
@@ -71,6 +86,77 @@ describe("resume feature runtime", () => {
     emitContext?.({ supported: false, reason: "non-watch-page", url: "https://www.youtube.com/" });
 
     expect(playerCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets ready status after unsupported navigation and cleanup", async () => {
+    let emitContext: ((context: YoutubeWatchContext) => void) | undefined;
+
+    const adapter = createYoutubeAdapter({
+      navigationObserver: {
+        start(callback) {
+          emitContext = callback;
+          return vi.fn();
+        }
+      },
+      waitForReadyPlayer: vi.fn(() => ({
+        promise: Promise.resolve({ context: supportedContext, video: {} as HTMLVideoElement }),
+        cleanup: vi.fn()
+      }))
+    });
+
+    const cleanup = adapter.start();
+    emitContext?.(supportedContext);
+    await Promise.resolve();
+
+    expect(adapter.status).toBe("ready");
+
+    emitContext?.({ supported: false, reason: "shorts", url: "https://www.youtube.com/shorts/dQw4w9WgXcQ" });
+    expect(adapter.status).toBe("idle");
+
+    emitContext?.(supportedContext);
+    await Promise.resolve();
+
+    expect(adapter.status).toBe("ready");
+
+    cleanup();
+    expect(adapter.status).toBe("idle");
+  });
+
+  it("ignores stale player readiness after route changes", async () => {
+    const firstReady = createDeferred<YoutubeRuntimeState | null>();
+    const secondReady = createDeferred<YoutubeRuntimeState | null>();
+    const onReady = vi.fn();
+    let emitContext: ((context: YoutubeWatchContext) => void) | undefined;
+
+    const adapter = createYoutubeAdapter({
+      navigationObserver: {
+        start(callback) {
+          emitContext = callback;
+          return vi.fn();
+        }
+      },
+      waitForReadyPlayer: vi
+        .fn()
+        .mockReturnValueOnce({ promise: firstReady.promise, cleanup: vi.fn() })
+        .mockReturnValueOnce({ promise: secondReady.promise, cleanup: vi.fn() })
+    });
+
+    adapter.start(onReady);
+    emitContext?.(supportedContext);
+    emitContext?.(nextSupportedContext);
+
+    firstReady.resolve({ context: supportedContext, video: {} as HTMLVideoElement });
+    await Promise.resolve();
+
+    expect(adapter.status).toBe("idle");
+    expect(onReady).not.toHaveBeenCalled();
+
+    secondReady.resolve({ context: nextSupportedContext, video: {} as HTMLVideoElement });
+    await Promise.resolve();
+
+    expect(adapter.status).toBe("ready");
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(onReady).toHaveBeenCalledWith({ context: nextSupportedContext, video: expect.any(Object) });
   });
 
   it("returns adapter cleanup through the feature registry lifecycle", async () => {
