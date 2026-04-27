@@ -1,9 +1,18 @@
 import type { WatchdeckFeature } from "../../core/feature-registry";
 import type { ExtensionContext } from "../../core/extension-context";
-import { createYoutubeAdapter, createYoutubeDiagnostics, type YoutubeAdapter } from "../../adapters/youtube";
+import {
+  createYoutubeAdapter,
+  createYoutubeDiagnostics,
+  type YoutubeAdapter,
+  type YoutubeAdapterOptions
+} from "../../adapters/youtube";
+import { createResumeProgressTracker, type ResumeProgressTracker, type ResumeProgressTrackerOptions } from "./progress-tracker";
+import { createLocalStorageRepository, type LocalStorageRepository } from "../../storage/local-storage-repository";
 
 export interface ResumeFeatureOptions {
-  readonly createAdapter?: (context: ExtensionContext) => YoutubeAdapter;
+  readonly createAdapter?: (context: ExtensionContext, options: YoutubeAdapterOptions) => YoutubeAdapter;
+  readonly createRepository?: (context: ExtensionContext) => LocalStorageRepository;
+  readonly createProgressTracker?: (options: ResumeProgressTrackerOptions) => ResumeProgressTracker;
 }
 
 export function createResumeFeature(options: ResumeFeatureOptions = {}): WatchdeckFeature {
@@ -11,11 +20,49 @@ export function createResumeFeature(options: ResumeFeatureOptions = {}): Watchde
     id: "resume",
     enabledByDefault: true,
     mount(context) {
-      const adapter = options.createAdapter?.(context) ?? createYoutubeAdapter({
-        diagnostics: createYoutubeDiagnostics(context)
-      });
+      const repository = options.createRepository?.(context) ?? createLocalStorageRepository({ logger: context.logger });
+      const createProgressTracker = options.createProgressTracker ?? createResumeProgressTracker;
+      let activeTracker: ResumeProgressTracker | undefined;
 
-      return adapter.start((state) => {
+      const stopActiveTracker = async (): Promise<void> => {
+        const tracker = activeTracker;
+        activeTracker = undefined;
+
+        if (!tracker) {
+          return;
+        }
+
+        try {
+          await tracker.flush();
+        } catch (error) {
+          context.logger.warn("watchdeck resume tracker flush failed", error);
+        }
+
+        try {
+          await tracker.cleanup();
+        } catch (error) {
+          context.logger.warn("watchdeck resume tracker cleanup failed", error);
+        }
+      };
+
+      const adapterOptions: YoutubeAdapterOptions = {
+        diagnostics: createYoutubeDiagnostics(context),
+        onBeforeContextChange: () => {
+          void stopActiveTracker();
+        }
+      };
+      const adapter = options.createAdapter?.(context, adapterOptions) ?? createYoutubeAdapter(adapterOptions);
+
+      const cleanupAdapter = adapter.start((state) => {
+        void stopActiveTracker();
+        activeTracker = createProgressTracker({
+          videoId: state.context.videoId,
+          video: state.video,
+          saveResumeRecord: repository.saveResumeRecord,
+          now: context.now,
+          logger: context.logger
+        });
+
         if (!context.debug) {
           return;
         }
@@ -25,6 +72,11 @@ export function createResumeFeature(options: ResumeFeatureOptions = {}): Watchde
           videoId: state.context.videoId
         });
       });
+
+      return () => {
+        cleanupAdapter();
+        void stopActiveTracker();
+      };
     }
   };
 }

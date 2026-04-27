@@ -279,7 +279,7 @@ describe("resume feature runtime", () => {
           }
         },
         waitForReadyPlayer: vi.fn(() => ({
-          promise: Promise.resolve({ context: supportedContext, video: {} as HTMLVideoElement }),
+          promise: Promise.resolve({ context: supportedContext, video: createVideo() }),
           cleanup: playerCleanup
         }))
       })
