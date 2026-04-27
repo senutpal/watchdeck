@@ -159,6 +159,98 @@ describe("resume feature runtime", () => {
     expect(onReady).toHaveBeenCalledWith({ context: nextSupportedContext, video: expect.any(Object) });
   });
 
+  it("calls the before-context-change hook with the previous ready state before a replacement is ready", async () => {
+    const firstState = { context: supportedContext, video: {} as HTMLVideoElement };
+    const secondState = { context: nextSupportedContext, video: {} as HTMLVideoElement };
+    const onBeforeContextChange = vi.fn();
+    const onReady = vi.fn();
+    let emitContext: ((context: YoutubeWatchContext) => void) | undefined;
+
+    const adapter = createYoutubeAdapter({
+      onBeforeContextChange,
+      navigationObserver: {
+        start(callback) {
+          emitContext = callback;
+          return vi.fn();
+        }
+      },
+      waitForReadyPlayer: vi
+        .fn()
+        .mockReturnValueOnce({ promise: Promise.resolve(firstState), cleanup: vi.fn() })
+        .mockReturnValueOnce({ promise: Promise.resolve(secondState), cleanup: vi.fn() })
+    });
+
+    adapter.start(onReady);
+    emitContext?.(supportedContext);
+    await Promise.resolve();
+
+    expect(onReady).toHaveBeenCalledWith(firstState);
+
+    emitContext?.(nextSupportedContext);
+
+    expect(onBeforeContextChange).toHaveBeenCalledTimes(1);
+    expect(onBeforeContextChange).toHaveBeenCalledWith(firstState);
+    expect(onReady).toHaveBeenCalledTimes(1);
+
+    await Promise.resolve();
+
+    expect(onReady).toHaveBeenCalledTimes(2);
+    expect(onReady).toHaveBeenLastCalledWith(secondState);
+  });
+
+  it("calls the before-context-change hook once when a ready route becomes unsupported", async () => {
+    const state = { context: supportedContext, video: {} as HTMLVideoElement };
+    const onBeforeContextChange = vi.fn();
+    let emitContext: ((context: YoutubeWatchContext) => void) | undefined;
+
+    const adapter = createYoutubeAdapter({
+      onBeforeContextChange,
+      navigationObserver: {
+        start(callback) {
+          emitContext = callback;
+          return vi.fn();
+        }
+      },
+      waitForReadyPlayer: vi.fn(() => ({ promise: Promise.resolve(state), cleanup: vi.fn() }))
+    });
+
+    adapter.start();
+    emitContext?.(supportedContext);
+    await Promise.resolve();
+
+    emitContext?.({ supported: false, reason: "non-watch-page", url: "https://www.youtube.com/" });
+
+    expect(onBeforeContextChange).toHaveBeenCalledTimes(1);
+    expect(onBeforeContextChange).toHaveBeenCalledWith(state);
+  });
+
+  it("calls the before-context-change hook once during repeated adapter cleanup", async () => {
+    const state = { context: supportedContext, video: {} as HTMLVideoElement };
+    const onBeforeContextChange = vi.fn();
+    let emitContext: ((context: YoutubeWatchContext) => void) | undefined;
+
+    const adapter = createYoutubeAdapter({
+      onBeforeContextChange,
+      navigationObserver: {
+        start(callback) {
+          emitContext = callback;
+          return vi.fn();
+        }
+      },
+      waitForReadyPlayer: vi.fn(() => ({ promise: Promise.resolve(state), cleanup: vi.fn() }))
+    });
+
+    const cleanup = adapter.start();
+    emitContext?.(supportedContext);
+    await Promise.resolve();
+
+    cleanup();
+    cleanup();
+
+    expect(onBeforeContextChange).toHaveBeenCalledTimes(1);
+    expect(onBeforeContextChange).toHaveBeenCalledWith(state);
+  });
+
   it("returns adapter cleanup through the feature registry lifecycle", async () => {
     const registry = createFeatureRegistry();
     const navigationCleanup = vi.fn();
