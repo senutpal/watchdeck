@@ -1,6 +1,12 @@
 export type YoutubeAdapterStatus = "idle" | "ready";
 
 export type {
+  YoutubeNavigationObserver,
+  YoutubeNavigationObserverOptions
+} from "./navigation-observer";
+export { createYoutubeNavigationObserver } from "./navigation-observer";
+
+export type {
   YoutubeDiagnosticEvent,
   YoutubeDiagnosticEventName,
   YoutubeDiagnostics
