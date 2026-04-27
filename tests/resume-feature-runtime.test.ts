@@ -1,4 +1,9 @@
-import { createYoutubeAdapter, type SupportedYoutubeWatchContext } from "../src/adapters/youtube";
+import {
+  createYoutubeAdapter,
+  type SupportedYoutubeWatchContext,
+  type YoutubeRuntimeState,
+  type YoutubeWatchContext
+} from "../src/adapters/youtube";
 import { createExtensionContext } from "../src/core/extension-context";
 import { createFeatureRegistry } from "../src/core/feature-registry";
 import { createResumeFeature } from "../src/features/resume";
@@ -46,7 +51,7 @@ describe("resume feature runtime", () => {
 
   it("cleans pending player waits when navigation becomes unsupported", () => {
     const playerCleanup = vi.fn();
-    let emitContext: ((context: Parameters<Parameters<typeof createYoutubeAdapter>[0]["navigationObserver"]["start"]>[0]) => void) | undefined;
+    let emitContext: ((context: YoutubeWatchContext) => void) | undefined;
 
     const adapter = createYoutubeAdapter({
       navigationObserver: {
@@ -56,7 +61,7 @@ describe("resume feature runtime", () => {
         }
       },
       waitForReadyPlayer: vi.fn(() => ({
-        promise: new Promise(() => undefined),
+        promise: new Promise<YoutubeRuntimeState | null>(() => undefined),
         cleanup: playerCleanup
       }))
     });

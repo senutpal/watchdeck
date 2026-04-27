@@ -15,8 +15,8 @@ type Listener = () => void;
 class FakeVideo {
   readonly listeners = new Map<string, Set<Listener>>();
   readonly removed: string[] = [];
-  readyState = HTMLMediaElement.HAVE_METADATA;
-  duration = 120;
+  readyState: number = HTMLMediaElement.HAVE_METADATA;
+  duration: number = 120;
 
   addEventListener(type: string, listener: EventListenerOrEventListenerObject): void {
     if (!this.listeners.has(type)) {
