@@ -22,7 +22,10 @@ export interface ResumeProgressTrackerOptions {
 export function createResumeProgressTracker(options: ResumeProgressTrackerOptions): ResumeProgressTracker {
   const throttleMs = options.throttleMs ?? DEFAULT_THROTTLE_MS;
   const logger = options.logger ?? console;
+  const documentTarget = options.documentTarget ?? globalThis.document;
+  const windowTarget = options.windowTarget ?? globalThis.window;
   let lastSavedAtMs = Number.NEGATIVE_INFINITY;
+  let cleanedUp = false;
 
   const persist = async (input: ResumeRecordInput): Promise<void> => {
     try {
@@ -49,18 +52,46 @@ export function createResumeProgressTracker(options: ResumeProgressTrackerOption
     void persist(input);
   };
 
+  const flush = async (): Promise<void> => {
+    const updatedAtMs = options.now();
+    const input = createRecordInput(updatedAtMs);
+
+    if (input) {
+      lastSavedAtMs = updatedAtMs;
+      await persist(input);
+    }
+  };
+
+  const flushSoon = (): void => {
+    void flush();
+  };
+
+  const flushWhenHidden = (): void => {
+    if (documentTarget?.visibilityState === "hidden") {
+      flushSoon();
+    }
+  };
+
   options.video.addEventListener("timeupdate", saveThrottled);
+  options.video.addEventListener("pause", flushSoon);
+  documentTarget?.addEventListener("visibilitychange", flushWhenHidden);
+  windowTarget?.addEventListener("pagehide", flushSoon);
+  windowTarget?.addEventListener("beforeunload", flushSoon);
 
   return {
-    async flush() {
-      const input = createRecordInput(options.now());
-
-      if (input) {
-        await persist(input);
-      }
-    },
+    flush,
     async cleanup() {
+      if (cleanedUp) {
+        return;
+      }
+
+      cleanedUp = true;
       options.video.removeEventListener("timeupdate", saveThrottled);
+      options.video.removeEventListener("pause", flushSoon);
+      documentTarget?.removeEventListener("visibilitychange", flushWhenHidden);
+      windowTarget?.removeEventListener("pagehide", flushSoon);
+      windowTarget?.removeEventListener("beforeunload", flushSoon);
+      await flush();
     }
   };
 
