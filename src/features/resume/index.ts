@@ -1,22 +1,30 @@
 import type { WatchdeckFeature } from "../../core/feature-registry";
-import { createYoutubeAdapter } from "../../adapters/youtube";
-import { createLocalStorageRepository } from "../../storage/local-storage-repository";
+import type { ExtensionContext } from "../../core/extension-context";
+import { createYoutubeAdapter, createYoutubeDiagnostics, type YoutubeAdapter } from "../../adapters/youtube";
 
-export function createResumeFeature(): WatchdeckFeature {
+export interface ResumeFeatureOptions {
+  readonly createAdapter?: (context: ExtensionContext) => YoutubeAdapter;
+}
+
+export function createResumeFeature(options: ResumeFeatureOptions = {}): WatchdeckFeature {
   return {
     id: "resume",
     enabledByDefault: true,
     mount(context) {
-      const adapter = createYoutubeAdapter();
-      const repository = createLocalStorageRepository();
+      const adapter = options.createAdapter?.(context) ?? createYoutubeAdapter({
+        diagnostics: createYoutubeDiagnostics(context)
+      });
 
-      if (context.debug) {
-        context.logger.debug("watchdeck resume boundary ready", {
+      return adapter.start((state) => {
+        if (!context.debug) {
+          return;
+        }
+
+        context.logger.debug("watchdeck resume runtime ready", {
           adapterStatus: adapter.status,
-          storageArea: repository.areaName,
-          storageAvailable: repository.isAvailable()
+          videoId: state.context.videoId
         });
-      }
+      });
     }
   };
 }
