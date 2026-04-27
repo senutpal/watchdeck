@@ -46,7 +46,7 @@ describe("local resume storage repository", () => {
 
   it("saves rounded per-video resume records under the expected storage key", async () => {
     const { values } = installChromeStorage();
-    const repository = createLocalStorageRepository();
+    const repository = createLocalStorageRepository({ now: () => 3500 });
 
     const saved = await repository.saveResumeRecord({
       videoId,
@@ -68,7 +68,7 @@ describe("local resume storage repository", () => {
 
   it("retrieves saved records and returns null for missing videos", async () => {
     installChromeStorage();
-    const repository = createLocalStorageRepository();
+    const repository = createLocalStorageRepository({ now: () => 2000 });
     const saved = await repository.saveResumeRecord({
       videoId,
       timestampSeconds: 42.8,
@@ -123,7 +123,7 @@ describe("local resume storage repository", () => {
 
   it("prunes older records beyond maxRecords while keeping non-resume keys", async () => {
     const { values } = installChromeStorage({ unrelated: { keep: true } });
-    const repository = createLocalStorageRepository();
+    const repository = createLocalStorageRepository({ now: () => 3500 });
 
     await repository.saveResumeRecord({ videoId: "oldest1", timestampSeconds: 10, durationSeconds: 100, updatedAtMs: 1000 });
     await repository.saveResumeRecord({ videoId: "newest2", timestampSeconds: 20, durationSeconds: 100, updatedAtMs: 3000 });
@@ -154,7 +154,7 @@ describe("local resume storage repository", () => {
     const { values } = installChromeStorage({
       "watchdeck:resume:v1:badbad": { schemaVersion: 2, videoId: "badbad" }
     });
-    const repository = createLocalStorageRepository();
+    const repository = createLocalStorageRepository({ now: () => 2000 });
 
     await repository.saveResumeRecord({ videoId: "valid1", timestampSeconds: 20, durationSeconds: 100, updatedAtMs: 1000 });
 

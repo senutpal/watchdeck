@@ -3,6 +3,8 @@ const VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{6,}$/;
 const SCHEMA_VERSION = 1;
 const COMPLETED_SECONDS_THRESHOLD = 30;
 const COMPLETED_RATIO_THRESHOLD = 0.95;
+const DEFAULT_MAX_RESUME_RECORDS = 500;
+const DEFAULT_MAX_RESUME_RECORD_AGE_MS = 180 * 24 * 60 * 60 * 1000;
 
 export interface ResumePlaybackRecord {
   readonly schemaVersion: 1;
@@ -184,9 +186,45 @@ export function createLocalStorageRepository(options: LocalStorageRepositoryOpti
         return [];
       }
     },
-    async pruneResumeRecords() {
-      const records = await this.listResumeRecords();
-      return { pruned: 0, remaining: records.length };
+    async pruneResumeRecords(options = {}) {
+      const storage = getStorage();
+      if (!storage) {
+        return { pruned: 0, remaining: 0 };
+      }
+
+      try {
+        const stored = await storage.get(null);
+        const resumeEntries = Object.entries(stored).filter(([key]) => key.startsWith(RESUME_STORAGE_PREFIX));
+        const validEntries = resumeEntries
+          .filter((entry): entry is [string, ResumePlaybackRecord] => isRecord(entry[1]));
+        const invalidKeys = resumeEntries
+          .filter(([, value]) => !isRecord(value))
+          .map(([key]) => key);
+        const maxRecords = options.maxRecords ?? DEFAULT_MAX_RESUME_RECORDS;
+        const maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_RESUME_RECORD_AGE_MS;
+        const cutoffMs = now() - maxAgeMs;
+        const sortedRecords = [...validEntries].sort(([, left], [, right]) => right.updatedAtMs - left.updatedAtMs);
+        const staleKeys = sortedRecords
+          .filter(([, record]) => record.updatedAtMs < cutoffMs)
+          .map(([key]) => key);
+        const freshRecords = sortedRecords.filter(([, record]) => record.updatedAtMs >= cutoffMs);
+        const excessKeys = freshRecords.slice(Math.max(0, maxRecords)).map(([key]) => key);
+        const keysToRemove = Array.from(new Set([...invalidKeys, ...staleKeys, ...excessKeys]));
+
+        if (keysToRemove.length > 0) {
+          try {
+            await storage.remove(keysToRemove);
+          } catch (error) {
+            warn(logger, "watchdeck failed to prune resume records", error);
+            return { pruned: 0, remaining: validEntries.length };
+          }
+        }
+
+        return { pruned: keysToRemove.length, remaining: freshRecords.length - excessKeys.length };
+      } catch (error) {
+        warn(logger, "watchdeck failed to inspect resume records for pruning", error);
+        return { pruned: 0, remaining: 0 };
+      }
     }
   };
 }
