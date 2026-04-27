@@ -51,6 +51,7 @@ export interface YoutubeAdapterOptions {
   readonly diagnostics?: YoutubeDiagnostics;
   readonly navigationObserver?: YoutubeNavigationObserver;
   readonly navigationObserverOptions?: Omit<YoutubeNavigationObserverOptions, "diagnostics">;
+  readonly onBeforeContextChange?: (state: YoutubeRuntimeState) => void | Promise<void>;
   readonly waitForReadyPlayer?: (
     context: SupportedYoutubeWatchContext,
     options?: YoutubePlayerLifecycleOptions
@@ -76,8 +77,25 @@ export function createYoutubeAdapter(options: YoutubeAdapterOptions = {}): Youtu
       let cleanupNavigation: (() => void) | undefined;
       let cleanedUp = false;
       let routeVersion = 0;
+      let activeState: YoutubeRuntimeState | undefined;
+
+      const notifyBeforeContextChange = () => {
+        if (!activeState) {
+          return;
+        }
+
+        const state = activeState;
+        activeState = undefined;
+
+        try {
+          void Promise.resolve(options.onBeforeContextChange?.(state)).catch(() => undefined);
+        } catch {
+          // Feature-level cleanup must never block or break adapter routing.
+        }
+      };
 
       const cleanupPlayer = () => {
+        notifyBeforeContextChange();
         currentPlayerHandle?.cleanup();
         currentPlayerHandle = undefined;
       };
@@ -104,6 +122,7 @@ export function createYoutubeAdapter(options: YoutubeAdapterOptions = {}): Youtu
           }
 
           status = "ready";
+          activeState = state;
           onReady?.(state);
         });
       });
