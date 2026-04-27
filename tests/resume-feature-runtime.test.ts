@@ -7,6 +7,7 @@ import {
 import { createExtensionContext } from "../src/core/extension-context";
 import { createFeatureRegistry } from "../src/core/feature-registry";
 import { createResumeFeature } from "../src/features/resume";
+import type { ResumeProgressTrackerOptions } from "../src/features/resume/progress-tracker";
 
 const supportedContext: SupportedYoutubeWatchContext = {
   supported: true,
@@ -27,6 +28,16 @@ function createDeferred<T>() {
   });
 
   return { promise, resolve };
+}
+
+function createVideo(overrides: Partial<HTMLVideoElement> = {}): HTMLVideoElement {
+  return {
+    currentTime: 42,
+    duration: 120,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    ...overrides
+  } as unknown as HTMLVideoElement;
 }
 
 describe("resume feature runtime", () => {
@@ -287,5 +298,155 @@ describe("resume feature runtime", () => {
 
     expect(navigationCleanup).toHaveBeenCalledTimes(1);
     expect(playerCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates a progress tracker for a ready video using the canonical video id and repository save", async () => {
+    let onReady: ((state: YoutubeRuntimeState) => void) | undefined;
+    const now = vi.fn(() => 1234);
+    const saveResumeRecord = vi.fn(() => Promise.resolve());
+    const createProgressTracker = vi.fn(() => ({ flush: vi.fn(() => Promise.resolve()), cleanup: vi.fn(() => Promise.resolve()) }));
+    const video = createVideo();
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    const registry = createFeatureRegistry();
+    registry.register(createResumeFeature({
+      createAdapter: () => ({
+        get status() {
+          return "ready" as const;
+        },
+        start(callback) {
+          onReady = callback;
+          return vi.fn();
+        }
+      }),
+      createRepository: () => ({
+        areaName: "local" as const,
+        isAvailable: vi.fn(() => true),
+        getResumeRecord: vi.fn(() => Promise.resolve(null)),
+        saveResumeRecord,
+        deleteResumeRecord: vi.fn(() => Promise.resolve()),
+        listResumeRecords: vi.fn(() => Promise.resolve([])),
+        pruneResumeRecords: vi.fn(() => Promise.resolve({ pruned: 0, remaining: 0 }))
+      }),
+      createProgressTracker
+    }));
+
+    await registry.mountAll(createExtensionContext({ debug: true, logger, now }));
+    onReady?.({ context: supportedContext, video });
+
+    expect(createProgressTracker).toHaveBeenCalledTimes(1);
+    expect(createProgressTracker).toHaveBeenCalledWith(expect.objectContaining({
+      videoId: "dQw4w9WgXcQ",
+      video,
+      saveResumeRecord,
+      now,
+      logger
+    } satisfies Partial<ResumeProgressTrackerOptions>));
+    expect(logger.debug).toHaveBeenCalledWith("watchdeck resume runtime ready", {
+      adapterStatus: "ready",
+      videoId: "dQw4w9WgXcQ"
+    });
+  });
+
+  it("flushes and cleans the active tracker before replacing it with a second ready video", async () => {
+    let onReady: ((state: YoutubeRuntimeState) => void) | undefined;
+    const firstTracker = { flush: vi.fn(() => Promise.resolve()), cleanup: vi.fn(() => Promise.resolve()) };
+    const secondTracker = { flush: vi.fn(() => Promise.resolve()), cleanup: vi.fn(() => Promise.resolve()) };
+    const createProgressTracker = vi.fn()
+      .mockReturnValueOnce(firstTracker)
+      .mockReturnValueOnce(secondTracker);
+
+    const registry = createFeatureRegistry();
+    registry.register(createResumeFeature({
+      createAdapter: () => ({ status: "idle", start: (callback) => { onReady = callback; return vi.fn(); } }),
+      createRepository: () => ({
+        areaName: "local" as const,
+        isAvailable: vi.fn(() => true),
+        getResumeRecord: vi.fn(() => Promise.resolve(null)),
+        saveResumeRecord: vi.fn(() => Promise.resolve()),
+        deleteResumeRecord: vi.fn(() => Promise.resolve()),
+        listResumeRecords: vi.fn(() => Promise.resolve([])),
+        pruneResumeRecords: vi.fn(() => Promise.resolve({ pruned: 0, remaining: 0 }))
+      }),
+      createProgressTracker
+    }));
+
+    await registry.mountAll(createExtensionContext());
+    onReady?.({ context: supportedContext, video: createVideo() });
+    onReady?.({ context: nextSupportedContext, video: createVideo() });
+    await Promise.resolve();
+
+    expect(firstTracker.flush).toHaveBeenCalledTimes(1);
+    expect(firstTracker.cleanup).toHaveBeenCalledTimes(1);
+    expect(createProgressTracker).toHaveBeenCalledTimes(2);
+    expect(createProgressTracker).toHaveBeenLastCalledWith(expect.objectContaining({ videoId: "J---aiyznGQ" }));
+  });
+
+  it("flushes and cleans the active tracker exactly once when the registry unmounts", async () => {
+    let onReady: ((state: YoutubeRuntimeState) => void) | undefined;
+    const adapterCleanup = vi.fn();
+    const tracker = { flush: vi.fn(() => Promise.resolve()), cleanup: vi.fn(() => Promise.resolve()) };
+    const registry = createFeatureRegistry();
+
+    registry.register(createResumeFeature({
+      createAdapter: () => ({ status: "idle", start: (callback) => { onReady = callback; return adapterCleanup; } }),
+      createRepository: () => ({
+        areaName: "local" as const,
+        isAvailable: vi.fn(() => true),
+        getResumeRecord: vi.fn(() => Promise.resolve(null)),
+        saveResumeRecord: vi.fn(() => Promise.resolve()),
+        deleteResumeRecord: vi.fn(() => Promise.resolve()),
+        listResumeRecords: vi.fn(() => Promise.resolve([])),
+        pruneResumeRecords: vi.fn(() => Promise.resolve({ pruned: 0, remaining: 0 }))
+      }),
+      createProgressTracker: vi.fn(() => tracker)
+    }));
+
+    await registry.mountAll(createExtensionContext());
+    onReady?.({ context: supportedContext, video: createVideo() });
+    await registry.unmountAll();
+    await Promise.resolve();
+
+    expect(adapterCleanup).toHaveBeenCalledTimes(1);
+    expect(tracker.flush).toHaveBeenCalledTimes(1);
+    expect(tracker.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("catches tracker flush and cleanup failures during route leave and unmount", async () => {
+    let adapterOptions: Parameters<typeof createYoutubeAdapter>[0] | undefined;
+    let onReady: ((state: YoutubeRuntimeState) => void) | undefined;
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const tracker = {
+      flush: vi.fn(() => Promise.reject(new Error("flush failed"))),
+      cleanup: vi.fn(() => Promise.reject(new Error("cleanup failed")))
+    };
+    const registry = createFeatureRegistry();
+
+    registry.register(createResumeFeature({
+      createAdapter: (_context, options) => {
+        adapterOptions = options;
+        return { status: "idle", start: (callback) => { onReady = callback; return vi.fn(); } };
+      },
+      createRepository: () => ({
+        areaName: "local" as const,
+        isAvailable: vi.fn(() => true),
+        getResumeRecord: vi.fn(() => Promise.resolve(null)),
+        saveResumeRecord: vi.fn(() => Promise.reject(new Error("save failed"))),
+        deleteResumeRecord: vi.fn(() => Promise.resolve()),
+        listResumeRecords: vi.fn(() => Promise.resolve([])),
+        pruneResumeRecords: vi.fn(() => Promise.resolve({ pruned: 0, remaining: 0 }))
+      }),
+      createProgressTracker: vi.fn(() => tracker)
+    }));
+
+    await registry.mountAll(createExtensionContext({ logger }));
+    onReady?.({ context: supportedContext, video: createVideo() });
+
+    expect(() => adapterOptions?.onBeforeContextChange?.({ context: supportedContext, video: createVideo() })).not.toThrow();
+    await registry.unmountAll();
+    await Promise.resolve();
+
+    expect(logger.warn).toHaveBeenCalledWith("watchdeck resume tracker flush failed", expect.any(Error));
+    expect(logger.warn).toHaveBeenCalledWith("watchdeck resume tracker cleanup failed", expect.any(Error));
   });
 });
