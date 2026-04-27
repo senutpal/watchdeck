@@ -145,4 +145,54 @@ describe("youtube navigation observer", () => {
 
     expect(events.map((event) => event.name)).toEqual(["route-detected", "route-unsupported"]);
   });
+
+  it("removes every navigation listener and clears the fallback interval on cleanup", () => {
+    const target = new FakeNavigationTarget();
+    const cleanup = createYoutubeNavigationObserver({
+      readUrl: () => "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      target
+    }).start(() => undefined);
+
+    cleanup();
+
+    expect(target.removed).toEqual(["yt-navigate-finish", "yt-page-data-updated", "popstate"]);
+    expect(target.cleared).toEqual([1]);
+  });
+
+  it("makes cleanup idempotent and stops later route callbacks", () => {
+    const target = new FakeNavigationTarget();
+    const contexts: YoutubeWatchContext[] = [];
+    let currentUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+    const cleanup = createYoutubeNavigationObserver({ readUrl: () => currentUrl, target }).start((context) => {
+      contexts.push(context);
+    });
+
+    cleanup();
+    cleanup();
+
+    currentUrl = "https://www.youtube.com/watch?v=abcdefghijk";
+    target.dispatch("yt-navigate-finish");
+    target.tick();
+
+    expect(videoIds(contexts)).toEqual(["dQw4w9WgXcQ"]);
+    expect(target.removed).toEqual(["yt-navigate-finish", "yt-page-data-updated", "popstate"]);
+    expect(target.cleared).toEqual([1]);
+  });
+
+  it("emits a navigation cleanup diagnostic once", () => {
+    const target = new FakeNavigationTarget();
+    const events: YoutubeDiagnosticEvent[] = [];
+    const cleanup = createYoutubeNavigationObserver({
+      readUrl: () => "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      target,
+      diagnostics: { emit: (event) => events.push(event) }
+    }).start(() => undefined);
+
+    cleanup();
+    cleanup();
+
+    expect(events).toContainEqual({ name: "cleanup", details: { scope: "navigation" } });
+    expect(events.filter((event) => event.name === "cleanup")).toHaveLength(1);
+  });
 });
