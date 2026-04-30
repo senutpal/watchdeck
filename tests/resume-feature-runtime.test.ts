@@ -7,7 +7,9 @@ import {
 import { createExtensionContext } from "../src/core/extension-context";
 import { createFeatureRegistry } from "../src/core/feature-registry";
 import { createResumeFeature } from "../src/features/resume";
+import type { AutoResumeControllerOptions } from "../src/features/resume/resume-controller";
 import type { ResumeProgressTrackerOptions } from "../src/features/resume/progress-tracker";
+import type { LocalStorageRepository, ResumePlaybackRecord } from "../src/storage/local-storage-repository";
 
 const supportedContext: SupportedYoutubeWatchContext = {
   supported: true,
@@ -38,6 +40,25 @@ function createVideo(overrides: Partial<HTMLVideoElement> = {}): HTMLVideoElemen
     removeEventListener: vi.fn(),
     ...overrides
   } as unknown as HTMLVideoElement;
+}
+
+function createRepository(overrides: Partial<LocalStorageRepository> = {}): LocalStorageRepository {
+  return {
+    areaName: "local",
+    isAvailable: vi.fn(() => true),
+    getResumeRecord: vi.fn(() => Promise.resolve(null)),
+    saveResumeRecord: vi.fn(() => Promise.resolve(null)),
+    deleteResumeRecord: vi.fn(() => Promise.resolve()),
+    listResumeRecords: vi.fn(() => Promise.resolve([])),
+    pruneResumeRecords: vi.fn(() => Promise.resolve({ pruned: 0, remaining: 0 })),
+    ...overrides
+  };
+}
+
+async function drainAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 describe("resume feature runtime", () => {
@@ -303,7 +324,7 @@ describe("resume feature runtime", () => {
   it("creates a progress tracker for a ready video using the canonical video id and repository save", async () => {
     let onReady: ((state: YoutubeRuntimeState) => void) | undefined;
     const now = vi.fn(() => 1234);
-    const saveResumeRecord = vi.fn(() => Promise.resolve());
+    const saveResumeRecord = vi.fn(() => Promise.resolve(null));
     const createProgressTracker = vi.fn(() => ({ flush: vi.fn(() => Promise.resolve()), cleanup: vi.fn(() => Promise.resolve()) }));
     const video = createVideo();
     const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -333,6 +354,7 @@ describe("resume feature runtime", () => {
 
     await registry.mountAll(createExtensionContext({ debug: true, logger, now }));
     onReady?.({ context: supportedContext, video });
+    await drainAsyncWork();
 
     expect(createProgressTracker).toHaveBeenCalledTimes(1);
     expect(createProgressTracker).toHaveBeenCalledWith(expect.objectContaining({
@@ -346,6 +368,126 @@ describe("resume feature runtime", () => {
       adapterStatus: "ready",
       videoId: "dQw4w9WgXcQ"
     });
+  });
+
+  it("delays progress tracking until the auto-resume lookup settles", async () => {
+    let onReady: ((state: YoutubeRuntimeState) => void) | undefined;
+    const lookup = createDeferred<ResumePlaybackRecord | null>();
+    const saveResumeRecord = vi.fn(() => Promise.resolve(null));
+    const createProgressTracker = vi.fn(() => ({ flush: vi.fn(() => Promise.resolve()), cleanup: vi.fn(() => Promise.resolve()) }));
+
+    const registry = createFeatureRegistry();
+    registry.register(createResumeFeature({
+      createAdapter: () => ({ status: "idle", start: (callback) => { onReady = callback; return vi.fn(); } }),
+      createRepository: () => createRepository({
+        getResumeRecord: vi.fn(() => lookup.promise),
+        saveResumeRecord
+      }),
+      createProgressTracker
+    }));
+
+    await registry.mountAll(createExtensionContext());
+    onReady?.({ context: supportedContext, video: createVideo({ currentTime: 0, duration: 600 }) });
+    await drainAsyncWork();
+
+    expect(createProgressTracker).not.toHaveBeenCalled();
+    expect(saveResumeRecord).not.toHaveBeenCalled();
+
+    lookup.resolve(null);
+    await drainAsyncWork();
+
+    expect(createProgressTracker).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates an auto-resume controller for a ready video using the canonical video id and repository lookup", async () => {
+    let onReady: ((state: YoutubeRuntimeState) => void) | undefined;
+    const getResumeRecord = vi.fn(() => Promise.resolve(null));
+    const video = createVideo();
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const createAutoResumeController = vi.fn<(_options: AutoResumeControllerOptions) => { cleanup: () => Promise<void> }>(() => ({
+      cleanup: vi.fn(() => Promise.resolve())
+    }));
+
+    const registry = createFeatureRegistry();
+    registry.register(createResumeFeature({
+      createAdapter: () => ({
+        get status() {
+          return "ready" as const;
+        },
+        start(callback) {
+          onReady = callback;
+          return vi.fn();
+        }
+      }),
+      createRepository: () => createRepository({ getResumeRecord }),
+      createAutoResumeController
+    }));
+
+    await registry.mountAll(createExtensionContext({ logger }));
+    onReady?.({ context: supportedContext, video });
+
+    expect(createAutoResumeController).toHaveBeenCalledTimes(1);
+    expect(createAutoResumeController).toHaveBeenCalledWith(expect.objectContaining({
+      videoId: "dQw4w9WgXcQ",
+      video,
+      getResumeRecord,
+      logger
+    } satisfies Partial<AutoResumeControllerOptions>));
+  });
+
+  it("cleans the active auto-resume controller before replacing it with a second ready video", async () => {
+    let onReady: ((state: YoutubeRuntimeState) => void) | undefined;
+    const firstController = { cleanup: vi.fn(() => Promise.resolve()) };
+    const secondController = { cleanup: vi.fn(() => Promise.resolve()) };
+    const createAutoResumeController = vi.fn<(_options: AutoResumeControllerOptions) => { cleanup: () => Promise<void> }>()
+      .mockReturnValueOnce(firstController)
+      .mockReturnValueOnce(secondController);
+
+    const registry = createFeatureRegistry();
+    registry.register(createResumeFeature({
+      createAdapter: () => ({ status: "idle", start: (callback) => { onReady = callback; return vi.fn(); } }),
+      createRepository: () => createRepository(),
+      createAutoResumeController
+    }));
+
+    await registry.mountAll(createExtensionContext());
+    onReady?.({ context: supportedContext, video: createVideo() });
+    await drainAsyncWork();
+    onReady?.({ context: nextSupportedContext, video: createVideo() });
+    await drainAsyncWork();
+
+    expect(firstController.cleanup).toHaveBeenCalledTimes(1);
+    expect(createAutoResumeController).toHaveBeenCalledTimes(2);
+    expect(createAutoResumeController).toHaveBeenLastCalledWith(expect.objectContaining({ videoId: "J---aiyznGQ" }));
+  });
+
+  it("does not create an auto-resume controller for unsupported adapter contexts", async () => {
+    const createAutoResumeController = vi.fn<(_options: AutoResumeControllerOptions) => { cleanup: () => Promise<void> }>(() => ({
+      cleanup: vi.fn(() => Promise.resolve())
+    }));
+    const registry = createFeatureRegistry();
+
+    registry.register(createResumeFeature({
+      createAdapter: () => createYoutubeAdapter({
+        navigationObserver: {
+          start(callback) {
+            callback({ supported: false, reason: "shorts", url: "https://www.youtube.com/shorts/dQw4w9WgXcQ" });
+            return vi.fn();
+          }
+        },
+        waitForReadyPlayer: vi.fn(() => ({
+          promise: Promise.resolve({ context: supportedContext, video: createVideo() }),
+          cleanup: vi.fn()
+        }))
+      }),
+      createRepository: () => createRepository(),
+      createAutoResumeController
+    }));
+
+    await registry.mountAll(createExtensionContext());
+    await Promise.resolve();
+
+    expect(createAutoResumeController).not.toHaveBeenCalled();
   });
 
   it("flushes and cleans the active tracker before replacing it with a second ready video", async () => {
@@ -363,7 +505,7 @@ describe("resume feature runtime", () => {
         areaName: "local" as const,
         isAvailable: vi.fn(() => true),
         getResumeRecord: vi.fn(() => Promise.resolve(null)),
-        saveResumeRecord: vi.fn(() => Promise.resolve()),
+        saveResumeRecord: vi.fn(() => Promise.resolve(null)),
         deleteResumeRecord: vi.fn(() => Promise.resolve()),
         listResumeRecords: vi.fn(() => Promise.resolve([])),
         pruneResumeRecords: vi.fn(() => Promise.resolve({ pruned: 0, remaining: 0 }))
@@ -373,8 +515,9 @@ describe("resume feature runtime", () => {
 
     await registry.mountAll(createExtensionContext());
     onReady?.({ context: supportedContext, video: createVideo() });
+    await drainAsyncWork();
     onReady?.({ context: nextSupportedContext, video: createVideo() });
-    await Promise.resolve();
+    await drainAsyncWork();
 
     expect(firstTracker.flush).toHaveBeenCalledTimes(1);
     expect(firstTracker.cleanup).toHaveBeenCalledTimes(1);
@@ -386,6 +529,7 @@ describe("resume feature runtime", () => {
     let onReady: ((state: YoutubeRuntimeState) => void) | undefined;
     const adapterCleanup = vi.fn();
     const tracker = { flush: vi.fn(() => Promise.resolve()), cleanup: vi.fn(() => Promise.resolve()) };
+    const controller = { cleanup: vi.fn(() => Promise.resolve()) };
     const registry = createFeatureRegistry();
 
     registry.register(createResumeFeature({
@@ -394,12 +538,16 @@ describe("resume feature runtime", () => {
         areaName: "local" as const,
         isAvailable: vi.fn(() => true),
         getResumeRecord: vi.fn(() => Promise.resolve(null)),
-        saveResumeRecord: vi.fn(() => Promise.resolve()),
+        saveResumeRecord: vi.fn(() => Promise.resolve(null)),
         deleteResumeRecord: vi.fn(() => Promise.resolve()),
         listResumeRecords: vi.fn(() => Promise.resolve([])),
         pruneResumeRecords: vi.fn(() => Promise.resolve({ pruned: 0, remaining: 0 }))
       }),
-      createProgressTracker: vi.fn(() => tracker)
+      createProgressTracker: vi.fn(() => tracker),
+      createAutoResumeController: vi.fn((controllerOptions: AutoResumeControllerOptions) => {
+        controllerOptions.onSettled?.();
+        return controller;
+      })
     }));
 
     await registry.mountAll(createExtensionContext());
@@ -408,6 +556,7 @@ describe("resume feature runtime", () => {
     await Promise.resolve();
 
     expect(adapterCleanup).toHaveBeenCalledTimes(1);
+    expect(controller.cleanup).toHaveBeenCalledTimes(1);
     expect(tracker.flush).toHaveBeenCalledTimes(1);
     expect(tracker.cleanup).toHaveBeenCalledTimes(1);
   });
@@ -420,6 +569,7 @@ describe("resume feature runtime", () => {
       flush: vi.fn(() => Promise.reject(new Error("flush failed"))),
       cleanup: vi.fn(() => Promise.reject(new Error("cleanup failed")))
     };
+    const controller = { cleanup: vi.fn(() => Promise.reject(new Error("controller cleanup failed"))) };
     const registry = createFeatureRegistry();
 
     registry.register(createResumeFeature({
@@ -436,7 +586,11 @@ describe("resume feature runtime", () => {
         listResumeRecords: vi.fn(() => Promise.resolve([])),
         pruneResumeRecords: vi.fn(() => Promise.resolve({ pruned: 0, remaining: 0 }))
       }),
-      createProgressTracker: vi.fn(() => tracker)
+      createProgressTracker: vi.fn(() => tracker),
+      createAutoResumeController: vi.fn((controllerOptions: AutoResumeControllerOptions) => {
+        controllerOptions.onSettled?.();
+        return controller;
+      })
     }));
 
     await registry.mountAll(createExtensionContext({ logger }));
@@ -448,5 +602,6 @@ describe("resume feature runtime", () => {
 
     expect(logger.warn).toHaveBeenCalledWith("watchdeck resume tracker flush failed", expect.any(Error));
     expect(logger.warn).toHaveBeenCalledWith("watchdeck resume tracker cleanup failed", expect.any(Error));
+    expect(logger.warn).toHaveBeenCalledWith("watchdeck auto resume cleanup failed", expect.any(Error));
   });
 });
