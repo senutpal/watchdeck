@@ -38,6 +38,7 @@ export interface LocalStorageRepository {
   getResumeRecord(videoId: string): Promise<ResumePlaybackRecord | null>;
   saveResumeRecord(input: ResumeRecordInput): Promise<ResumePlaybackRecord | null>;
   deleteResumeRecord(videoId: string): Promise<void>;
+  clearResumeRecords(): Promise<number>;
   listResumeRecords(): Promise<ResumePlaybackRecord[]>;
   pruneResumeRecords(options?: ResumePruneOptions): Promise<ResumePruneResult>;
 }
@@ -168,6 +169,27 @@ export function createLocalStorageRepository(options: LocalStorageRepositoryOpti
         await storage.remove(storageKeyFor(videoId));
       } catch (error) {
         warn(logger, "watchdeck failed to delete resume record", error);
+      }
+    },
+    async clearResumeRecords() {
+      const storage = getStorage();
+      if (!storage) {
+        return 0;
+      }
+
+      try {
+        const stored = await storage.get(null);
+        const keysToRemove = Object.keys(stored).filter((key) => key.startsWith(RESUME_STORAGE_PREFIX));
+
+        if (keysToRemove.length === 0) {
+          return 0;
+        }
+
+        await storage.remove(keysToRemove);
+        return keysToRemove.length;
+      } catch (error) {
+        warn(logger, "watchdeck failed to clear resume records", error);
+        return 0;
       }
     },
     async listResumeRecords() {

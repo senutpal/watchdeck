@@ -177,4 +177,40 @@ describe("local resume storage repository", () => {
 
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
+
+  it("clears all resume records while preserving unrelated storage", async () => {
+    const { values } = installChromeStorage({
+      unrelated: { keep: true },
+      "watchdeck:settings:v1": { resumeEnabled: true, debugLogging: false },
+      "watchdeck:resume:v1:abc123": { value: 1 },
+      "watchdeck:resume:v1:def456": { value: 2 }
+    });
+    const repository = createLocalStorageRepository();
+
+    await expect(repository.clearResumeRecords()).resolves.toBe(2);
+
+    expect(values["watchdeck:resume:v1:abc123"]).toBeUndefined();
+    expect(values["watchdeck:resume:v1:def456"]).toBeUndefined();
+    expect(values.unrelated).toEqual({ keep: true });
+    expect(values["watchdeck:settings:v1"]).toEqual({ resumeEnabled: true, debugLogging: false });
+  });
+
+  it("returns zero when clearing finds no resume records or storage is unavailable", async () => {
+    installChromeStorage({ unrelated: true });
+    await expect(createLocalStorageRepository().clearResumeRecords()).resolves.toBe(0);
+
+    vi.unstubAllGlobals();
+    await expect(createLocalStorageRepository().clearResumeRecords()).resolves.toBe(0);
+  });
+
+  it("warns and returns zero when clearing resume records fails", async () => {
+    installChromeStorage({ [storageKey]: { value: 1 } });
+    const logger = { warn: vi.fn() };
+    const repository = createLocalStorageRepository({ logger });
+
+    vi.spyOn(chrome.storage.local, "remove").mockRejectedValueOnce(new Error("remove failed"));
+
+    await expect(repository.clearResumeRecords()).resolves.toBe(0);
+    expect(logger.warn).toHaveBeenCalledWith("watchdeck failed to clear resume records", expect.any(Error));
+  });
 });
