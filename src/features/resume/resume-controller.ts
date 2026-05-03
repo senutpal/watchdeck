@@ -18,6 +18,7 @@ export interface AutoResumeControllerOptions {
   readonly getResumeRecord: (videoId: string) => Promise<ResumePlaybackRecord | null>;
   readonly evaluatePolicy?: (input: ResumePolicyInput) => ResumePolicyDecision;
   readonly logger?: Pick<Console, "warn">;
+  readonly onResumeApplied?: (targetSeconds: number) => void;
   readonly onSettled?: () => void;
 }
 
@@ -131,6 +132,7 @@ export function createAutoResumeController(options: AutoResumeControllerOptions)
     programmaticSeek = true;
     try {
       options.video.currentTime = decision.targetSeconds;
+      options.onResumeApplied?.(decision.targetSeconds);
     } finally {
       void Promise.resolve().then(() => {
         programmaticSeek = false;

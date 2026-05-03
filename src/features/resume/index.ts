@@ -4,15 +4,24 @@ import {
   createYoutubeAdapter,
   createYoutubeDiagnostics,
   type YoutubeAdapter,
-  type YoutubeAdapterOptions
+  type YoutubeAdapterOptions,
+  type YoutubeRuntimeState
 } from "../../adapters/youtube";
 import { createAutoResumeController, type AutoResumeController, type AutoResumeControllerOptions } from "./resume-controller";
 import { createResumeProgressTracker, type ResumeProgressTracker, type ResumeProgressTrackerOptions } from "./progress-tracker";
 import { createLocalStorageRepository, type LocalStorageRepository } from "../../storage/local-storage-repository";
+import { DEFAULT_SETTINGS } from "../../settings/default-settings";
+import {
+  createSettingsRepository as createDefaultSettingsRepository,
+  type SettingsRepository
+} from "../../settings/settings-repository";
+import { createResumeTrustPanel, type ResumeTrustPanel, type ResumeTrustPanelOptions } from "./trust-panel";
 
 export interface ResumeFeatureOptions {
   readonly createAdapter?: (context: ExtensionContext, options: YoutubeAdapterOptions) => YoutubeAdapter;
   readonly createRepository?: (context: ExtensionContext) => LocalStorageRepository;
+  readonly createSettingsRepository?: (context: ExtensionContext) => SettingsRepository;
+  readonly createTrustPanel?: (options: ResumeTrustPanelOptions) => ResumeTrustPanel;
   readonly createAutoResumeController?: (options: AutoResumeControllerOptions) => AutoResumeController;
   readonly createProgressTracker?: (options: ResumeProgressTrackerOptions) => ResumeProgressTracker;
 }
@@ -23,11 +32,22 @@ export function createResumeFeature(options: ResumeFeatureOptions = {}): Watchde
     enabledByDefault: true,
     mount(context) {
       const repository = options.createRepository?.(context) ?? createLocalStorageRepository({ logger: context.logger });
+      const settingsRepository = options.createSettingsRepository?.(context)
+        ?? createDefaultSettingsRepository({ logger: context.logger });
+      const panel = typeof document !== "undefined"
+        ? options.createTrustPanel?.({ root: document, settingsRepository, resumeRepository: repository })
+          ?? createResumeTrustPanel({ root: document, settingsRepository, resumeRepository: repository })
+        : undefined;
       const createController = options.createAutoResumeController ?? createAutoResumeController;
       const createProgressTracker = options.createProgressTracker ?? createResumeProgressTracker;
       let activeController: AutoResumeController | undefined;
       let activeTracker: ResumeProgressTracker | undefined;
       let contextVersion = 0;
+      let cleanupSettingsWatcher: (() => void) | undefined;
+      let cleanedUp = false;
+      let settingsReady = false;
+      let resumeEnabled = DEFAULT_SETTINGS.resumeEnabled;
+      let latestReadyState: YoutubeRuntimeState | undefined;
 
       const stopActiveAutoResumeController = async (): Promise<void> => {
         const controller = activeController;
@@ -65,25 +85,21 @@ export function createResumeFeature(options: ResumeFeatureOptions = {}): Watchde
         }
       };
 
-      const adapterOptions: YoutubeAdapterOptions = {
-        diagnostics: createYoutubeDiagnostics(context),
-        onBeforeContextChange: () => {
-          contextVersion += 1;
-          void stopActiveAutoResumeController();
-          void stopActiveTracker();
-        }
-      };
-      const adapter = options.createAdapter?.(context, adapterOptions) ?? createYoutubeAdapter(adapterOptions);
-
-      const cleanupAdapter = adapter.start((state) => {
+      const startRuntimeForReadyState = (state: YoutubeRuntimeState): void => {
         contextVersion += 1;
         const readyVersion = contextVersion;
+        latestReadyState = state;
+        panel?.setCurrentVideoId(state.context.videoId);
 
         void stopActiveAutoResumeController();
         void stopActiveTracker();
 
+        if (!settingsReady || !resumeEnabled) {
+          return;
+        }
+
         const startProgressTracker = (): void => {
-          if (readyVersion !== contextVersion) {
+          if (readyVersion !== contextVersion || !resumeEnabled) {
             return;
           }
 
@@ -101,6 +117,7 @@ export function createResumeFeature(options: ResumeFeatureOptions = {}): Watchde
           video: state.video,
           getResumeRecord: repository.getResumeRecord,
           logger: context.logger,
+          onResumeApplied: (targetSeconds) => panel?.showAutoResumed(targetSeconds),
           onSettled: startProgressTracker
         });
 
@@ -112,10 +129,68 @@ export function createResumeFeature(options: ResumeFeatureOptions = {}): Watchde
           adapterStatus: adapter.status,
           videoId: state.context.videoId
         });
+      };
+
+      const applySettings = (settings: { readonly resumeEnabled: boolean }, startCurrentReadyState: boolean): void => {
+        if (cleanedUp) {
+          return;
+        }
+
+        const wasReady = settingsReady;
+        settingsReady = true;
+        resumeEnabled = settings.resumeEnabled;
+        panel?.setResumeEnabled(resumeEnabled);
+
+        if (!resumeEnabled) {
+          contextVersion += 1;
+          void stopActiveAutoResumeController();
+          void stopActiveTracker();
+          return;
+        }
+
+        if (startCurrentReadyState && !wasReady && latestReadyState) {
+          startRuntimeForReadyState(latestReadyState);
+        }
+      };
+
+      cleanupSettingsWatcher = settingsRepository.watchSettings((settings) => {
+        applySettings(settings, false);
       });
 
+      void settingsRepository.getSettings()
+        .then((settings) => {
+          applySettings(settings, true);
+        })
+        .catch((error) => {
+          context.logger.warn("watchdeck settings load failed", error);
+          applySettings(DEFAULT_SETTINGS, true);
+        });
+
+      const adapterOptions: YoutubeAdapterOptions = {
+        diagnostics: createYoutubeDiagnostics(context),
+        onBeforeContextChange: () => {
+          contextVersion += 1;
+          latestReadyState = undefined;
+          panel?.setCurrentVideoId(null);
+          void stopActiveAutoResumeController();
+          void stopActiveTracker();
+        }
+      };
+      const adapter = options.createAdapter?.(context, adapterOptions) ?? createYoutubeAdapter(adapterOptions);
+
+      const cleanupAdapter = adapter.start(startRuntimeForReadyState);
+
       return () => {
+        if (cleanedUp) {
+          return;
+        }
+
+        cleanedUp = true;
         contextVersion += 1;
+        latestReadyState = undefined;
+        cleanupSettingsWatcher?.();
+        panel?.setCurrentVideoId(null);
+        panel?.cleanup();
         cleanupAdapter();
         void stopActiveAutoResumeController();
         void stopActiveTracker();

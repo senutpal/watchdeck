@@ -162,4 +162,52 @@ describe("auto resume controller", () => {
     expect(video.currentTime).toBe(0);
     expect(logger.warn).toHaveBeenCalledWith("watchdeck auto resume lookup failed", error);
   });
+
+  it("calls onResumeApplied once after applying an approved resume target", async () => {
+    const video = createVideo(0, 600);
+    const onResumeApplied = vi.fn();
+
+    createAutoResumeController({
+      videoId,
+      video,
+      getResumeRecord: vi.fn(() => Promise.resolve(createRecord())),
+      onResumeApplied
+    });
+    await drainAsyncWork();
+
+    expect(video.currentTime).toBe(120);
+    expect(onResumeApplied).toHaveBeenCalledTimes(1);
+    expect(onResumeApplied).toHaveBeenCalledWith(120);
+  });
+
+  it("does not call onResumeApplied for skipped or cleaned up resume attempts", async () => {
+    const skipped = vi.fn();
+    createAutoResumeController({
+      videoId,
+      video: createVideo(10, 600),
+      getResumeRecord: vi.fn(() => Promise.resolve(createRecord())),
+      evaluatePolicy: vi.fn<(_input: ResumePolicyInput) => ResumePolicyDecision>(() => ({
+        shouldResume: false,
+        reason: "near-start"
+      })),
+      onResumeApplied: skipped
+    });
+    await drainAsyncWork();
+
+    const lookup = createDeferred<ResumePlaybackRecord | null>();
+    const cleanedUp = vi.fn();
+    const controller = createAutoResumeController({
+      videoId,
+      video: createVideo(0, 600),
+      getResumeRecord: vi.fn(() => lookup.promise),
+      onResumeApplied: cleanedUp
+    });
+
+    await controller.cleanup();
+    lookup.resolve(createRecord());
+    await drainAsyncWork();
+
+    expect(skipped).not.toHaveBeenCalled();
+    expect(cleanedUp).not.toHaveBeenCalled();
+  });
 });
