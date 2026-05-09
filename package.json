@@ -1,13 +1,44 @@
 {
   "name": "watchdeck",
   "version": "0.1.0",
+  "description": "Resume YouTube videos right where you left off. Progress stays on your device. No sync. No accounts.",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "Utpal Sen <contactutpalsen@gmail.com>",
+  "homepage": "https://github.com/senutpal/watchdeck#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/senutpal/watchdeck.git"
+  },
+  "bugs": {
+    "url": "https://github.com/senutpal/watchdeck/issues",
+    "email": "contactutpalsen@gmail.com"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "chrome-extension",
+    "browser-extension",
+    "manifest-v3",
+    "youtube",
+    "youtube-resume",
+    "local-first",
+    "privacy-first",
+    "no-tracking",
+    "typescript",
+    "watchdeck"
+  ],
   "scripts": {
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run clean && tsup --entry.content src/entrypoints/content.ts --entry.background src/entrypoints/background.ts --format iife --target es2020 --out-dir dist --clean=false && node scripts/copy-static.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "build": "npm run clean && tsup --entry.content src/entrypoints/content.ts --entry.background src/entrypoints/background.ts --entry.popup src/entrypoints/popup.ts --format iife --target es2020 --out-dir dist --clean=false && node scripts/copy-static.mjs",
     "test": "vitest",
-    "smoke": "node scripts/smoke-extension.mjs"
+    "smoke": "node scripts/smoke-extension.mjs",
+    "package": "node scripts/package-extension.mjs",
+    "release": "npm run build && npm run smoke && vitest --run && npm run package",
+    "version": "node scripts/sync-manifest-version.mjs && git add public/manifest.json"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.40",
