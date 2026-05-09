@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest a new YouTube enhancement for WatchDeck.
+title: "[Feature]: "
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, skim the existing issues. Your idea may already be planned.
+
+        WatchDeck stays narrow. Local-first. No tracking. Anything that bypasses ads, downloads content, automates engagement, or scrapes personal data is out of scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: Describe the user pain. Avoid jumping straight to a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: How would WatchDeck behave if this shipped? Be concrete. Mention any settings, surfaces, or shortcuts.
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Closest category
+      options:
+        - Continuity (continue-watching, per-channel resume, exports)
+        - Bookmarks and notes
+        - Player memory (speed, volume, quality)
+        - Focus (hide recommendations, comments, Shorts)
+        - Workflow (queues, triage, command palette)
+        - Optional integration (third-party API, opt-in)
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Trade-offs
+      description: Does this require a new permission? Network access? Heavier DOM injection? Be honest.
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: This idea respects the local-first, no-tracking principles in CONTRIBUTING.md.
+          required: true
+        - label: This idea does not bypass ads, paid features, or platform policy.
+          required: true

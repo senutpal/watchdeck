@@ -1,0 +1,64 @@
+name: Bug report
+description: Something is broken in WatchDeck.
+title: "[Bug]: "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The more specific you are, the faster we can fix it.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      description: Chrome 132, Brave 1.71, Edge, etc.
+      placeholder: "Chrome 132.0.6834.84"
+    validations:
+      required: true
+  - type: input
+    id: extension-version
+    attributes:
+      label: WatchDeck version
+      description: Found at chrome://extensions or in the popup footer.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the YouTube URL pattern if it matters. Do not include private data.
+      placeholder: |
+        1. Open https://www.youtube.com/watch?v=...
+        2. Pause at 1:23.
+        3. Reload the page.
+        4. Observe that the video did not resume.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: Open DevTools on the YouTube tab. Paste any messages prefixed with "watchdeck".
+      render: shell
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched existing issues for this problem.
+          required: true
+        - label: I am running the latest version of WatchDeck.
+          required: true
