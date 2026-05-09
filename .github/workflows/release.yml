@@ -1,0 +1,60 @@
+name: Release
+
+# Triggered when release-please cuts a new GitHub Release.
+# This workflow builds the extension and attaches the upload-ready ZIP
+# as a release asset so users can download it from the Releases page.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  attach-zip:
+    name: Build and attach ZIP
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout the released tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build, smoke, test, package
+        run: npm run release
+
+      - name: Locate ZIP
+        id: zip
+        run: |
+          ZIP=$(ls watchdeck-*.zip | head -n 1)
+          echo "path=$ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Verify manifest matches release tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          MANIFEST_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('public/manifest.json','utf8')).version)")
+          if [ "$MANIFEST_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Release tag ($TAG_VERSION) does not match public/manifest.json version ($MANIFEST_VERSION)."
+            exit 1
+          fi
+        env:
+          GITHUB_REF_NAME: ${{ github.event.release.tag_name }}
+
+      - name: Upload ZIP to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          fail_on_unmatched_files: true
+          files: ${{ steps.zip.outputs.path }}
