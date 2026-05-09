@@ -4,32 +4,6 @@ All notable changes to WatchDeck are documented here. The format is based on [Ke
 
 ## [Unreleased]
 
-### Added
-- Toolbar popup. Click the WatchDeck icon to toggle auto-resume, see the active YouTube tab title, clear progress for the current video, or erase all saved data with a confirmation step.
-- `activeTab` permission. Granted only on user gesture so the popup can identify the current YouTube tab. Revoked when the tab changes.
-- Close button on the in-page resume controls panel.
-- Branded extension icons at 16, 32, 48, and 128 px, generated from the source logo with bounding-box detection so the artwork fills the canvas.
-- ZIP packaging script that produces an upload-ready archive at `watchdeck-<version>.zip`.
-- `npm version` lifecycle hook that syncs `public/manifest.json` to the new package version automatically.
-- GitHub Actions workflow `CI` for build, smoke, tests, and packaging on every push and pull request.
-- GitHub Actions workflow `Release` triggered by `v*.*.*` tags. Builds, packages, and publishes a GitHub Release with the ZIP attached and auto-generated notes.
-- GitHub Actions workflow `Bump version` for one-click semver bumps that flow into a release.
-- Issue templates (bug report, feature request) with form validation.
-- Pull request template tied to the project principles.
-- Dependabot configuration for grouped weekly npm and monthly GitHub Actions updates.
-- CODEOWNERS, EditorConfig, and `.nvmrc` for contributor consistency.
-- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `PRIVACY.md` for the open-source community profile.
-
-### Changed
-- Brand display now reads **WatchDeck** consistently across the popup, the in-page panel, and error messages.
-- Trust line copy now reads "Resume data stays on this browser. It does not sync or upload."
-- Manifest description rewritten for the Chrome Web Store listing.
-- README rewritten as a public-facing landing document with install, privacy, develop, and release sections.
-- `package.json` adds `description`, `license`, `author`, `repository`, `bugs`, `homepage`, `engines`, and `keywords` for proper npm and GitHub metadata.
-
-### Removed
-- Mentions of internal version markers from user-facing copy.
-
 ## [0.1.0]
 
 First milestone build. The extension is ready for local install and forms the foundation for future feature modules.
@@ -65,6 +39,24 @@ First milestone build. The extension is ready for local install and forms the fo
 - Resume clear API for current video and full-clear paths. ([b56e2f4](../../commit/b56e2f4))
 - In-page trust controls panel with a global enable toggle, clear-this-video, and clear-all actions. ([2304900](../../commit/2304900), [f7fd691](../../commit/f7fd691))
 - Subtle auto-resume status indicator.
+- Toolbar popup. Click the WatchDeck icon to toggle auto-resume, see the active YouTube tab title, clear progress for the current video, or erase all saved data with a confirmation step.
+- `activeTab` permission. Granted only on user gesture so the popup can identify the current YouTube tab. Revoked when the tab changes.
+- Close button on the in-page resume controls panel.
+- Branded extension icons at 16, 32, 48, and 128 px, generated from the source logo with bounding-box detection so the artwork fills the canvas.
+
+#### Packaging and release automation
+- ZIP packaging script that produces an upload-ready archive at `watchdeck-<version>.zip`.
+- `npm version` lifecycle hook that syncs `public/manifest.json` to the new package version automatically.
+- GitHub Actions workflow `CI` for build, smoke, tests, and packaging on every push and pull request.
+- GitHub Actions workflow `Release` triggered by `v*.*.*` tags. Builds, packages, and publishes a GitHub Release with the ZIP attached and auto-generated notes.
+- GitHub Actions workflow `Bump version` for one-click semver bumps that flow into a release.
+
+#### Community and contributor profile
+- Issue templates (bug report, feature request) with form validation.
+- Pull request template tied to the project principles.
+- Dependabot configuration for grouped weekly npm and monthly GitHub Actions updates.
+- CODEOWNERS, EditorConfig, and `.nvmrc` for contributor consistency.
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `PRIVACY.md` for the open-source community profile.
 
 #### Validation
 - Storage repository spec covering list, delete, and availability paths. ([6b84df3](../../commit/6b84df3))
@@ -72,6 +64,16 @@ First milestone build. The extension is ready for local install and forms the fo
 - `example-noop` reference feature that demonstrates the registry mount and unmount lifecycle for future contributors. ([3afa7d7](../../commit/3afa7d7))
 - Modularity test that proves a new feature can be added without editing resume internals. ([d6b34a9](../../commit/d6b34a9))
 - Unit test suite of 111 tests across 15 files covering route parsing, navigation, lifecycle, settings, storage, resume policy, controller, tracker, trust panel, and modularity.
+
+### Changed
+- Brand display now reads **WatchDeck** consistently across the popup, the in-page panel, and error messages.
+- Trust line copy now reads "Resume data stays on this browser. It does not sync or upload."
+- Manifest description rewritten for the Chrome Web Store listing.
+- README rewritten as a public-facing landing document with install, privacy, develop, and release sections.
+- `package.json` adds `description`, `license`, `author`, `repository`, `bugs`, `homepage`, `engines`, and `keywords` for proper npm and GitHub metadata.
+
+### Removed
+- Mentions of internal version markers from user-facing copy.
 
 ### Repository setup
 - Initial repository, license, and `.gitignore` for planning artifacts and build output. ([c85de79](../../commit/c85de79), [da7954f](../../commit/da7954f))
