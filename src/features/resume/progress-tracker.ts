@@ -1,6 +1,6 @@
 import type { ResumeRecordInput } from "../../storage/local-storage-repository";
 
-const DEFAULT_THROTTLE_MS = 15_000;
+export const DEFAULT_THROTTLE_MS = 15_000;
 const SAVE_FAILURE_MESSAGE = "watchdeck resume progress save failed";
 
 export interface ResumeProgressTracker {
