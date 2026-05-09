@@ -12,16 +12,22 @@ describe("extension manifest", () => {
     expect(manifest.name).toBe("WatchDeck");
   });
 
-  it("requests only local storage permission", () => {
-    expect(manifest.permissions).toEqual(["storage"]);
+  it("requests only the narrow permissions WatchDeck needs", () => {
+    // storage: per-video resume timestamps in chrome.storage.local
+    // activeTab: when the user clicks the toolbar icon, read the active tab's URL
+    //            so the popup can target "Clear this video" at the right videoId.
+    //            activeTab is granted only on user gesture and revoked on tab change,
+    //            so it does not require persistent host access.
+    expect(manifest.permissions).toEqual(["storage", "activeTab"]);
     expect(manifest.host_permissions).toBeUndefined();
   });
 
   it("does not include broad or unrelated permissions", () => {
     expect(serializedManifest).not.toContain("<all_urls>");
-    expect(serializedManifest).not.toContain("activeTab");
     expect(serializedManifest).not.toContain("scripting");
-    expect(serializedManifest).not.toContain("tabs");
+    // The "tabs" permission grants persistent tab access across the browser; we use
+    // "activeTab" instead, which is event-scoped to the user clicking the action.
+    expect(manifest.permissions).not.toContain("tabs");
   });
 
   it("targets only YouTube with the expected content script", () => {

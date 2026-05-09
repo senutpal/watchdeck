@@ -1,9 +1,25 @@
 {
   "manifest_version": 3,
   "name": "WatchDeck",
-  "description": "local-first YouTube convenience tools",
+  "description": "Resume YouTube videos right where you left off. Progress stays on your device. No sync. No accounts.",
   "version": "0.1.0",
-  "permissions": ["storage"],
+  "permissions": ["storage", "activeTab"],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "WatchDeck",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
   "background": {
     "service_worker": "background.js"
   },
