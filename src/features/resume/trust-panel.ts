@@ -2,9 +2,9 @@ import type { SettingsRepository } from "../../settings/settings-repository";
 import type { LocalStorageRepository } from "../../storage/local-storage-repository";
 
 const PANEL_ID = "watchdeck-resume-controls";
-const LOCAL_ONLY_COPY = "Resume data stays on this browser. v1 does not sync or upload it.";
+const LOCAL_ONLY_COPY = "Resume data stays on this browser. It does not sync or upload.";
 const NO_VIDEO_HELPER = "Open a YouTube video to clear its saved progress.";
-const CONTROL_FAILURE_STATUS = "watchdeck could not update controls. YouTube playback is unaffected.";
+const CONTROL_FAILURE_STATUS = "WatchDeck could not update controls. YouTube playback is unaffected.";
 
 export interface ResumeTrustPanel {
   setCurrentVideoId(videoId: string | null): void;
@@ -36,7 +36,7 @@ export function createResumeTrustPanel(options: ResumeTrustPanelOptions): Resume
 
   const container = options.root.createElement("section");
   container.id = PANEL_ID;
-  container.setAttribute("aria-label", "watchdeck resume controls");
+  container.setAttribute("aria-label", "WatchDeck resume controls");
   setStyles(container, {
     position: "fixed",
     right: "16px",
@@ -55,9 +55,38 @@ export function createResumeTrustPanel(options: ResumeTrustPanelOptions): Resume
     boxShadow: "0 8px 28px rgba(0,0,0,0.28)"
   });
 
+  const titleRow = options.root.createElement("div");
+  setStyles(titleRow, {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "4px"
+  });
+
   const title = options.root.createElement("div");
-  title.textContent = "watchdeck";
-  setStyles(title, { fontSize: "13px", fontWeight: "700", marginBottom: "4px" });
+  title.textContent = "WatchDeck";
+  setStyles(title, { fontSize: "13px", fontWeight: "700" });
+
+  const closeButton = options.root.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "×";
+  closeButton.setAttribute("aria-label", "Close WatchDeck panel");
+  setStyles(closeButton, {
+    width: "22px",
+    height: "22px",
+    padding: "0",
+    margin: "-4px -4px -4px 8px",
+    border: "none",
+    borderRadius: "6px",
+    background: "transparent",
+    color: "rgba(255,255,255,0.6)",
+    fontSize: "16px",
+    lineHeight: "1",
+    cursor: "pointer"
+  });
+
+  titleRow.appendChild(title);
+  titleRow.appendChild(closeButton);
 
   const trustLine = options.root.createElement("p");
   trustLine.textContent = LOCAL_ONLY_COPY;
@@ -116,7 +145,7 @@ export function createResumeTrustPanel(options: ResumeTrustPanelOptions): Resume
   status.textContent = NO_VIDEO_HELPER;
   setStyles(status, { minHeight: "17px", color: "rgba(255,255,255,0.62)" });
 
-  container.appendChild(title);
+  container.appendChild(titleRow);
   container.appendChild(trustLine);
   container.appendChild(toggleLabel);
   container.appendChild(buttonRow);
@@ -169,7 +198,12 @@ export function createResumeTrustPanel(options: ResumeTrustPanelOptions): Resume
   clearCurrentButton.addEventListener("click", handleClearCurrent);
   clearAllButton.addEventListener("click", handleClearAll);
 
-  return {
+  const handleClose = (): void => {
+    api.cleanup();
+  };
+  closeButton.addEventListener("click", handleClose);
+
+  const api: ResumeTrustPanel = {
     setCurrentVideoId(videoId) {
       currentVideoId = videoId;
       clearCurrentButton.disabled = !videoId;
@@ -196,7 +230,10 @@ export function createResumeTrustPanel(options: ResumeTrustPanelOptions): Resume
       checkbox.removeEventListener("change", handleToggleChange);
       clearCurrentButton.removeEventListener("click", handleClearCurrent);
       clearAllButton.removeEventListener("click", handleClearAll);
+      closeButton.removeEventListener("click", handleClose);
       container.remove();
     }
   };
+
+  return api;
 }

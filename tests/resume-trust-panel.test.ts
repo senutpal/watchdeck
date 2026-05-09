@@ -147,9 +147,9 @@ describe("resume trust panel", () => {
 
     const panels = findElements(root.body, (element) => element.id === "watchdeck-resume-controls");
     expect(panels).toHaveLength(1);
-    expect(textOf(panels[0])).toContain("watchdeck");
+    expect(textOf(panels[0])).toContain("WatchDeck");
     expect(textOf(panels[0])).toContain("Resume videos automatically");
-    expect(textOf(panels[0])).toContain("Resume data stays on this browser. v1 does not sync or upload it.");
+    expect(textOf(panels[0])).toContain("Resume data stays on this browser. It does not sync or upload.");
   });
 
   it("uses an aria-live status region and idempotent cleanup", () => {
@@ -250,7 +250,7 @@ describe("resume trust panel", () => {
     checkbox?.dispatchEvent(new Event("change"));
     await drainAsyncWork();
 
-    expect(textOf(root.body)).toContain("watchdeck could not update controls. YouTube playback is unaffected.");
+    expect(textOf(root.body)).toContain("WatchDeck could not update controls. YouTube playback is unaffected.");
   });
 
   it("formats auto-resume status as minutes and seconds", () => {

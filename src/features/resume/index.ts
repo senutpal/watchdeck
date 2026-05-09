@@ -15,7 +15,7 @@ import {
   createSettingsRepository as createDefaultSettingsRepository,
   type SettingsRepository
 } from "../../settings/settings-repository";
-import { createResumeTrustPanel, type ResumeTrustPanel, type ResumeTrustPanelOptions } from "./trust-panel";
+import type { ResumeTrustPanel, ResumeTrustPanelOptions } from "./trust-panel";
 
 export interface ResumeFeatureOptions {
   readonly createAdapter?: (context: ExtensionContext, options: YoutubeAdapterOptions) => YoutubeAdapter;
@@ -36,7 +36,6 @@ export function createResumeFeature(options: ResumeFeatureOptions = {}): Watchde
         ?? createDefaultSettingsRepository({ logger: context.logger });
       const panel = typeof document !== "undefined"
         ? options.createTrustPanel?.({ root: document, settingsRepository, resumeRepository: repository })
-          ?? createResumeTrustPanel({ root: document, settingsRepository, resumeRepository: repository })
         : undefined;
       const createController = options.createAutoResumeController ?? createAutoResumeController;
       const createProgressTracker = options.createProgressTracker ?? createResumeProgressTracker;
