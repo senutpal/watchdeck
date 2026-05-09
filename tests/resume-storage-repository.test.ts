@@ -213,4 +213,42 @@ describe("local resume storage repository", () => {
     await expect(repository.clearResumeRecords()).resolves.toBe(0);
     expect(logger.warn).toHaveBeenCalledWith("watchdeck failed to clear resume records", expect.any(Error));
   });
+
+  it("isAvailable, listResumeRecords, and deleteResumeRecord behave correctly with and without chrome.storage", async () => {
+    const { values } = installChromeStorage({ unrelated: { keep: true } });
+    const repository = createLocalStorageRepository({ now: () => 5000 });
+
+    // isAvailable: true when chrome.storage.local is present.
+    expect(repository.areaName).toBe("local");
+    expect(repository.isAvailable()).toBe(true);
+
+    // listResumeRecords: empty when no resume keys exist (despite unrelated keys present).
+    await expect(repository.listResumeRecords()).resolves.toEqual([]);
+
+    // listResumeRecords: returns only valid resume records and ignores unrelated keys.
+    const savedA = await repository.saveResumeRecord({ videoId: "abc123", timestampSeconds: 10, durationSeconds: 100, updatedAtMs: 1000 });
+    const savedB = await repository.saveResumeRecord({ videoId: "def456", timestampSeconds: 20, durationSeconds: 100, updatedAtMs: 2000 });
+    const listed = await repository.listResumeRecords();
+    expect(listed).toHaveLength(2);
+    expect(listed).toEqual(expect.arrayContaining([savedA, savedB]));
+
+    // deleteResumeRecord: removes the requested key and leaves siblings + unrelated values intact.
+    await repository.deleteResumeRecord("abc123");
+    expect(values["watchdeck:resume:v1:abc123"]).toBeUndefined();
+    expect(values["watchdeck:resume:v1:def456"]).toBeDefined();
+    expect(values.unrelated).toEqual({ keep: true });
+
+    // deleteResumeRecord: invalid video ID is a no-op (does not touch unrelated storage).
+    await repository.deleteResumeRecord("bad");
+    expect(values["watchdeck:resume:v1:def456"]).toBeDefined();
+    expect(values.unrelated).toEqual({ keep: true });
+
+    // listResumeRecords: returns empty when storage is unavailable.
+    vi.unstubAllGlobals();
+    const unavailableRepository = createLocalStorageRepository();
+    expect(unavailableRepository.isAvailable()).toBe(false);
+    await expect(unavailableRepository.listResumeRecords()).resolves.toEqual([]);
+    // deleteResumeRecord: no throw when storage is unavailable.
+    await expect(unavailableRepository.deleteResumeRecord("abc123")).resolves.toBeUndefined();
+  });
 });
