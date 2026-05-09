@@ -14,7 +14,7 @@ if (!fs.existsSync(manifestPath)) {
 fs.mkdirSync(distDir, { recursive: true });
 fs.cpSync(publicDir, distDir, { recursive: true });
 
-for (const name of ["content", "background"]) {
+for (const name of ["content", "background", "popup"]) {
   const generatedPath = path.join(distDir, `${name}.global.js`);
   const finalPath = path.join(distDir, `${name}.js`);
 

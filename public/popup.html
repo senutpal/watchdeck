@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>WatchDeck</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0b0c;
+        --surface: rgba(255, 255, 255, 0.04);
+        --hairline: rgba(255, 255, 255, 0.08);
+        --text: rgba(255, 255, 255, 0.94);
+        --text-soft: rgba(255, 255, 255, 0.6);
+        --text-quiet: rgba(255, 255, 255, 0.42);
+        --accent: #ef4444;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 13px;
+        line-height: 1.45;
+        -webkit-font-smoothing: antialiased;
+      }
+      :focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.35);
+        outline-offset: 2px;
+        border-radius: 6px;
+      }
+
+      main { padding: 16px 18px 12px; }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .brand img {
+        width: 36px;
+        height: 36px;
+        display: block;
+        flex: 0 0 auto;
+      }
+      .brand-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+      .brand-name {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        line-height: 1.15;
+      }
+      .brand-state {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.04em;
+        color: var(--text-quiet);
+      }
+      .brand-state[data-state="on"] { color: rgba(74, 222, 128, 0.85); }
+      .brand-state[data-state="off"] { color: var(--text-quiet); }
+
+      .now-watching {
+        display: none;
+        padding: 11px 13px;
+        margin-bottom: 12px;
+        background: var(--surface);
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+      }
+      .now-watching.is-visible { display: block; }
+      .label {
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-quiet);
+        margin: 0 0 4px;
+      }
+      .now-watching-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text);
+        line-height: 1.35;
+        margin: 0;
+        word-break: break-word;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 11px 14px;
+        background: var(--surface);
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        cursor: pointer;
+        user-select: none;
+        margin-bottom: 8px;
+      }
+      .toggle-label {
+        font-size: 13.5px;
+        font-weight: 500;
+      }
+      .toggle input {
+        appearance: none;
+        position: relative;
+        width: 32px;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        margin: 0;
+        cursor: pointer;
+        transition: background 160ms ease;
+        flex: 0 0 auto;
+      }
+      .toggle input::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 14px;
+        height: 14px;
+        background: #fff;
+        border-radius: 50%;
+        transition: transform 160ms ease;
+      }
+      .toggle input:checked { background: var(--accent); }
+      .toggle input:checked::after { transform: translateX(14px); }
+
+      .primary {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 120ms ease, border-color 120ms ease;
+      }
+      .primary:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.07);
+        border-color: rgba(255, 255, 255, 0.14);
+      }
+      .primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      .status {
+        min-height: 16px;
+        margin: 8px 2px 0;
+        font-size: 11.5px;
+        color: var(--text-soft);
+      }
+      .status:empty { margin-top: 0; }
+
+      .footer {
+        margin-top: 14px;
+        padding-top: 11px;
+        border-top: 1px solid var(--hairline);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .footer-trust {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--text-quiet);
+        letter-spacing: 0.01em;
+      }
+      .footer-link {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--text-quiet);
+        font: inherit;
+        font-size: 11px;
+        cursor: pointer;
+        transition: color 120ms ease;
+      }
+      .footer-link:hover { color: var(--accent); }
+
+      .confirm {
+        display: none;
+        margin-top: 10px;
+        padding: 11px 12px;
+        background: var(--surface);
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+      }
+      .confirm.is-visible { display: block; }
+      .confirm-text {
+        margin: 0 0 8px;
+        font-size: 12px;
+        color: var(--text);
+      }
+      .confirm-actions { display: flex; gap: 8px; }
+      .confirm-actions button {
+        flex: 1;
+        padding: 7px 10px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: 8px;
+        cursor: pointer;
+        border: 1px solid var(--hairline);
+        background: transparent;
+        color: var(--text-soft);
+        transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+      }
+      .confirm-actions button:hover {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .confirm-actions .danger {
+        color: var(--accent);
+        border-color: rgba(239, 68, 68, 0.35);
+      }
+      .confirm-actions .danger:hover {
+        background: rgba(239, 68, 68, 0.12);
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="brand">
+        <img src="icons/icon-128.png" alt="" />
+        <div class="brand-text">
+          <h1 class="brand-name">WatchDeck</h1>
+          <span class="brand-state" id="brand-state" data-state="off">···</span>
+        </div>
+      </header>
+
+      <section class="now-watching" id="now-watching">
+        <p class="label">Now watching</p>
+        <p class="now-watching-title" id="now-watching-title"></p>
+      </section>
+
+      <label class="toggle">
+        <span class="toggle-label">Auto-resume</span>
+        <input type="checkbox" id="resume-toggle" />
+      </label>
+
+      <button type="button" id="clear-current" class="primary" disabled>
+        Clear progress for this video
+      </button>
+
+      <div class="status" role="status" aria-live="polite" id="status"></div>
+
+      <section class="confirm" id="confirm" aria-live="polite">
+        <p class="confirm-text" id="confirm-text">Erase all saved resume data?</p>
+        <div class="confirm-actions">
+          <button type="button" id="confirm-cancel">Cancel</button>
+          <button type="button" id="confirm-yes" class="danger">Erase all</button>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span class="footer-trust">saved on this device</span>
+        <button type="button" class="footer-link" id="clear-all">Clear all</button>
+      </footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
