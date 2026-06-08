@@ -41,10 +41,10 @@
     "version": "node scripts/sync-manifest-version.mjs && git add public/manifest.json"
   },
   "devDependencies": {
-    "@types/chrome": "^0.1.40",
-    "@types/node": "^25.9.1",
+    "@types/chrome": "^0.1.43",
+    "@types/node": "^25.9.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.8"
   }
 }
